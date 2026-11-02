@@ -115,7 +115,7 @@
         let rows = 38;
         let videoReady = false;
         let mode = 0; // 0: Grid Partículas, 1: Partículas Livres Flutuantes
-        let facingMode = 'user';
+        let facingMode = 'user'; // 'user' (frontal) ou 'environment' (traseira)
 
         let mediaRecorder;
         let recordedChunks = [];
@@ -146,10 +146,7 @@
             });
 
             document.getElementById('toggleCam').addEventListener('click', () => {
-                facingMode = facingMode === 'user' ? 'environment' : 'user';
-                if (cam) {
-                    cam.remove();
-                }
+                facingMode = (facingMode === 'user') ? 'environment' : 'user';
                 initCamera();
             });
 
@@ -157,7 +154,15 @@
         }
 
         function initCamera() {
-            document.getElementById('info').innerText = 'Solicitando acesso à câmera...';
+            document.getElementById('info').innerText = 'Alternando câmera (' + (facingMode === 'user' ? 'Frontal' : 'Traseira') + ')...';
+
+            // Parar tracks anteriores para liberar o dispositivo no hardware
+            if (cam && cam.elt && cam.elt.srcObject) {
+                let oldStream = cam.elt.srcObject;
+                oldStream.getTracks().forEach(track => track.stop());
+                cam.elt.srcObject = null;
+            }
+
             let constraints = {
                 video: {
                     facingMode: facingMode,
@@ -169,34 +174,34 @@
 
             navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
-                    cam = createCapture(constraints, function() {
+                    if (!cam) {
+                        cam = createCapture(constraints, function() {
+                            videoReady = true;
+                            document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
+                        });
+                        cam.size(cols, rows);
+                        cam.hide();
+                    } else {
                         videoReady = true;
-                        document.getElementById('info').innerText = 'Pronto! Toque em Gravar para iniciar.';
-                    });
+                        document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
+                    }
                     cam.elt.srcObject = stream;
-                    cam.size(cols, rows);
-                    cam.hide();
                 })
                 .catch(err => {
                     console.error("Erro na câmera:", err);
-                    document.getElementById('error-msg').innerText = "Erro ao acessar a câmera: " + err.message + "\n\nPermita o acesso no navegador e use http://localhost.";
+                    document.getElementById('error-msg').innerText = "Erro ao acessar a câmera: " + err.message + "\n\nVerifique se o dispositivo possui a câmera selecionada ou se as permissões foram concedidas.";
                     document.getElementById('error-box').style.display = 'block';
-                    document.getElementById('info').innerText = 'Falha ao acessar a câmera.';
+                    document.getElementById('info').innerText = 'Falha ao trocar de câmera.';
                 });
         }
 
         async function toggleRecording() {
             if (!isRecording) {
-                // Iniciar Gravação
                 try {
                     recordedChunks = [];
-                    // Capturar áudio do microfone
                     micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                    
-                    // Capturar stream do canvas p5.js (30 fps)
                     let canvasStream = p5Canvas.elt.captureStream(30);
 
-                    // Combinar trilhas de vídeo do canvas e áudio do microfone
                     let combinedStream = new MediaStream([
                         ...canvasStream.getVideoTracks(),
                         ...micStream.getAudioTracks()
@@ -207,7 +212,7 @@
                         options = { mimeType: 'video/webm' };
                     }
                     if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                        options = { mimeType: '' }; // Padrão do navegador
+                        options = { mimeType: '' };
                     }
 
                     mediaRecorder = new MediaRecorder(combinedStream, options);
@@ -232,7 +237,6 @@
                             window.URL.revokeObjectURL(url);
                         }, 100);
 
-                        // Parar trilhas de áudio do microfone
                         if (micStream) {
                             micStream.getTracks().forEach(track => track.stop());
                         }
@@ -252,7 +256,6 @@
                     alert("Erro ao gravar: " + err.message + "\nVerifique permissões de microfone.");
                 }
             } else {
-                // Parar Gravação
                 mediaRecorder.stop();
                 isRecording = false;
                 let btn = document.getElementById('toggleRecord');
