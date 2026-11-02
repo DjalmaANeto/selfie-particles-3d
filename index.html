@@ -95,7 +95,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
 </head>
 <body>
-    <div id="info">Iniciando câmera...</div>
+    <div id="info">Iniciando câmera principal...</div>
     <div id="canvas-container"></div>
     <div id="error-box">
         <h3>Aviso de Câmera / Protocolo</h3>
@@ -115,7 +115,7 @@
         let rows = 38;
         let videoReady = false;
         let mode = 0; // 0: Grid Partículas, 1: Partículas Livres Flutuantes
-        let facingMode = 'user'; // 'user' (frontal) ou 'environment' (traseira)
+        let facingMode = 'environment'; // Iniciando com a câmera principal (traseira) por padrão
 
         let mediaRecorder;
         let recordedChunks = [];
@@ -154,7 +154,7 @@
         }
 
         function initCamera() {
-            document.getElementById('info').innerText = 'Alternando câmera (' + (facingMode === 'user' ? 'Frontal' : 'Traseira') + ')...';
+            document.getElementById('info').innerText = 'Alternando câmera (' + (facingMode === 'user' ? 'Frontal' : 'Principal/Traseira') + ')...';
 
             // Parar tracks anteriores para liberar o dispositivo no hardware
             if (cam && cam.elt && cam.elt.srcObject) {
