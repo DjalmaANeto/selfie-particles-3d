@@ -98,8 +98,8 @@
     <div id="info">Iniciando câmera principal...</div>
     <div id="canvas-container"></div>
     <div id="error-box">
-        <h3>Aviso de Câmera / Protocolo</h3>
-        <p id="error-msg">Navegadores bloqueiam a câmera ao abrir arquivos locais (file://). Use via Servidor Local (http://localhost).</p>
+        <h3>Aviso de Câmera / Permissões</h3>
+        <p id="error-msg">Verifique se o dispositivo possui a câmera selecionada ou se as permissões foram concedidas.</p>
         <button onclick="location.reload()">Tentar Novamente</button>
     </div>
     <div id="ui">
@@ -128,6 +128,7 @@
             p5Canvas.parent('canvas-container');
 
             if (window.location.protocol === 'file:') {
+                document.getElementById('error-msg').innerText = "Navegadores bloqueiam a câmera ao abrir arquivos locais (file://). Use via Servidor Local (http://localhost).";
                 document.getElementById('error-box').style.display = 'block';
                 document.getElementById('info').innerText = 'Erro: Protocolo file:// detectado.';
                 return;
@@ -156,7 +157,7 @@
         function initCamera() {
             document.getElementById('info').innerText = 'Alternando câmera (' + (facingMode === 'user' ? 'Frontal' : 'Principal/Traseira') + ')...';
 
-            // Parar tracks anteriores para liberar o dispositivo no hardware
+            // Parar tracks anteriores para liberar o hardware
             if (cam && cam.elt && cam.elt.srcObject) {
                 let oldStream = cam.elt.srcObject;
                 oldStream.getTracks().forEach(track => track.stop());
@@ -174,25 +175,45 @@
 
             navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
-                    if (!cam) {
-                        cam = createCapture(constraints, function() {
-                            videoReady = true;
-                            document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
-                        });
-                        cam.size(cols, rows);
-                        cam.hide();
-                    } else {
-                        videoReady = true;
-                        document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
-                    }
-                    cam.elt.srcObject = stream;
+                    successStream(stream);
                 })
                 .catch(err => {
-                    console.error("Erro na câmera:", err);
-                    document.getElementById('error-msg').innerText = "Erro ao acessar a câmera: " + err.message + "\n\nVerifique se o dispositivo possui a câmera selecionada ou se as permissões foram concedidas.";
-                    document.getElementById('error-box').style.display = 'block';
-                    document.getElementById('info').innerText = 'Falha ao trocar de câmera.';
+                    console.warn("Falha com facingMode:", facingMode, err);
+                    // Fallback para câmera frontal ou qualquer disponível se a traseira falhar
+                    if (facingMode === 'environment') {
+                        document.getElementById('info').innerText = 'Câmera principal indisponível, tentando frontal...';
+                        facingMode = 'user';
+                        constraints.video.facingMode = 'user';
+                        navigator.mediaDevices.getUserMedia(constraints)
+                            .then(stream => successStream(stream))
+                            .catch(err2 => handleCameraError(err2));
+                    } else {
+                        handleCameraError(err);
+                    }
                 });
+        }
+
+        function successStream(stream) {
+            if (!cam) {
+                cam = createCapture({ video: true, audio: false }, function() {
+                    videoReady = true;
+                    document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
+                });
+                cam.size(cols, rows);
+                cam.hide();
+            } else {
+                videoReady = true;
+                document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
+            }
+            cam.elt.srcObject = stream;
+        }
+
+        function handleCameraError(err) {
+            console.error("Erro na câmera:", err);
+            let msg = "Erro ao acessar a câmera: " + err.message + "\n\nVerifique se o dispositivo possui a câmera selecionada ou se as permissões foram concedidas.";
+            document.getElementById('error-msg').innerText = msg;
+            document.getElementById('error-box').style.display = 'block';
+            document.getElementById('info').innerText = 'Falha ao acessar a câmera.';
         }
 
         async function toggleRecording() {
