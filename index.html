@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Selfie Partículas 3D - Câmera em Tempo Real com Gravação</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: sans-serif;
+            color: #fff;
+            width: 100vw;
+            height: 100vh;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 20px;
+            border-radius: 30px;
+            backdrop-filter: blur(5px);
+            max-width: 95vw;
+        }
+        button {
+            background: #ff3366;
+            border: none;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 13px;
+        }
+        button:hover {
+            background: #ff1144;
+        }
+        button.recording {
+            background: #33cc66;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        #info {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 18px;
+            border-radius: 15px;
+            font-size: 13px;
+            text-align: center;
+            max-width: 90vw;
+            line-height: 1.4;
+            z-index: 10;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        #error-box {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 20, 25, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #ff3366;
+            text-align: center;
+            z-index: 100;
+            max-width: 80vw;
+        }
+    </style>
+    <!-- Carregando p5.js via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+</head>
+<body>
+    <div id="info">Iniciando câmera...</div>
+    <div id="canvas-container"></div>
+    <div id="error-box">
+        <h3>Aviso de Câmera / Protocolo</h3>
+        <p id="error-msg">Navegadores bloqueiam a câmera ao abrir arquivos locais (file://). Use via Servidor Local (http://localhost).</p>
+        <button onclick="location.reload()">Tentar Novamente</button>
+    </div>
+    <div id="ui">
+        <button id="toggleMode">Alternar Estilo</button>
+        <button id="toggleCam">Trocar Câmera</button>
+        <button id="toggleRecord">Gravar Vídeo</button>
+    </div>
+
+    <script>
+        let cam;
+        let particles = [];
+        let cols = 50;
+        let rows = 38;
+        let videoReady = false;
+        let mode = 0; // 0: Grid Partículas, 1: Partículas Livres Flutuantes
+        let facingMode = 'user';
+
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+        let p5Canvas;
+        let micStream;
+
+        function setup() {
+            p5Canvas = createCanvas(windowWidth, windowHeight, WEBGL);
+            p5Canvas.parent('canvas-container');
+
+            if (window.location.protocol === 'file:') {
+                document.getElementById('error-box').style.display = 'block';
+                document.getElementById('info').innerText = 'Erro: Protocolo file:// detectado.';
+                return;
+            }
+
+            initCamera();
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    particles.push(new Particle(x, y));
+                }
+            }
+
+            document.getElementById('toggleMode').addEventListener('click', () => {
+                mode = (mode + 1) % 2;
+            });
+
+            document.getElementById('toggleCam').addEventListener('click', () => {
+                facingMode = facingMode === 'user' ? 'environment' : 'user';
+                if (cam) {
+                    cam.remove();
+                }
+                initCamera();
+            });
+
+            document.getElementById('toggleRecord').addEventListener('click', toggleRecording);
+        }
+
+        function initCamera() {
+            document.getElementById('info').innerText = 'Solicitando acesso à câmera...';
+            let constraints = {
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: false
+            };
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => {
+                    cam = createCapture(constraints, function() {
+                        videoReady = true;
+                        document.getElementById('info').innerText = 'Pronto! Toque em Gravar para iniciar.';
+                    });
+                    cam.elt.srcObject = stream;
+                    cam.size(cols, rows);
+                    cam.hide();
+                })
+                .catch(err => {
+                    console.error("Erro na câmera:", err);
+                    document.getElementById('error-msg').innerText = "Erro ao acessar a câmera: " + err.message + "\n\nPermita o acesso no navegador e use http://localhost.";
+                    document.getElementById('error-box').style.display = 'block';
+                    document.getElementById('info').innerText = 'Falha ao acessar a câmera.';
+                });
+        }
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                // Iniciar Gravação
+                try {
+                    recordedChunks = [];
+                    // Capturar áudio do microfone
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    
+                    // Capturar stream do canvas p5.js (30 fps)
+                    let canvasStream = p5Canvas.elt.captureStream(30);
+
+                    // Combinar trilhas de vídeo do canvas e áudio do microfone
+                    let combinedStream = new MediaStream([
+                        ...canvasStream.getVideoTracks(),
+                        ...micStream.getAudioTracks()
+                    ]);
+
+                    let options = { mimeType: 'video/webm;codecs=vp9,opus' };
+                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        options = { mimeType: 'video/webm' };
+                    }
+                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        options = { mimeType: '' }; // Padrão do navegador
+                    }
+
+                    mediaRecorder = new MediaRecorder(combinedStream, options);
+
+                    mediaRecorder.ondataavailable = function(e) {
+                        if (e.data && e.data.size > 0) {
+                            recordedChunks.push(e.data);
+                        }
+                    };
+
+                    mediaRecorder.onstop = function() {
+                        let blob = new Blob(recordedChunks, { type: 'video/webm' });
+                        let url = URL.createObjectURL(blob);
+                        let a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = 'selfie-particles-3d-' + Date.now() + '.webm';
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(() => {
+                            document.body.removeChild(a);
+                            window.URL.revokeObjectURL(url);
+                        }, 100);
+
+                        // Parar trilhas de áudio do microfone
+                        if (micStream) {
+                            micStream.getTracks().forEach(track => track.stop());
+                        }
+
+                        document.getElementById('info').innerText = 'Vídeo salvo com sucesso!';
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    let btn = document.getElementById('toggleRecord');
+                    btn.innerText = 'Parar Gravação';
+                    btn.classList.add('recording');
+                    document.getElementById('info').innerText = 'Gravando vídeo e áudio...';
+
+                } catch (err) {
+                    console.error("Erro ao iniciar gravação:", err);
+                    alert("Erro ao gravar: " + err.message + "\nVerifique permissões de microfone.");
+                }
+            } else {
+                // Parar Gravação
+                mediaRecorder.stop();
+                isRecording = false;
+                let btn = document.getElementById('toggleRecord');
+                btn.innerText = 'Gravar Vídeo';
+                btn.classList.remove('recording');
+            }
+        }
+
+        function draw() {
+            background(10, 10, 15);
+
+            if (!videoReady) {
+                return;
+            }
+
+            try {
+                cam.loadPixels();
+                if (!cam.pixels || cam.pixels.length === 0) return;
+            } catch (e) {
+                return;
+            }
+
+            let rx = map(mouseY, 0, height, -0.5, 0.5);
+            let ry = map(mouseX, 0, width, -0.5, 0.5);
+            
+            if (touches.length > 0) {
+                rx = map(touches[0].y, 0, height, -0.5, 0.5);
+                ry = map(touches[0].x, 0, width, -0.5, 0.5);
+            }
+
+            rotateX(rx);
+            rotateY(ry);
+
+            let spacingX = width / cols;
+            let spacingY = height / rows;
+
+            translate(-width / 2 + spacingX / 2, -height / 2 + spacingY / 2, 0);
+
+            let index = 0;
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    let camX = facingMode === 'user' ? (cols - 1 - x) : x;
+                    let loc = (camX + y * cols) * 4;
+
+                    let r = cam.pixels[loc] || 0;
+                    let g = cam.pixels[loc + 1] || 0;
+                    let b = cam.pixels[loc + 2] || 0;
+                    let bright = (r + g + b) / 3;
+
+                    let p = particles[index];
+                    p.update(bright, r, g, b);
+                    p.display(x * spacingX, y * spacingY);
+
+                    index++;
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.offset = random(1000);
+                this.z = 0;
+            }
+
+            update(bright, r, g, b) {
+                this.bright = bright;
+                this.r = r;
+                this.g = g;
+                this.b = b;
+
+                let targetZ = map(bright, 0, 255, -120, 120);
+                this.z = lerp(this.z, targetZ, 0.2);
+
+                let angle = millis() * 0.003 + this.offset;
+                this.floatZ = sin(angle) * 12;
+            }
+
+            display(baseX, baseY) {
+                push();
+                translate(baseX, baseY, this.z + (mode === 1 ? this.floatZ : 0));
+                
+                noStroke();
+                fill(this.r, this.g, this.b, 220);
+
+                let sz = map(this.bright, 0, 255, 1, 5);
+
+                if (mode === 0) {
+                    box(sz * 2);
+                } else {
+                    sphere(sz * 1.5, 4, 4);
+                }
+                pop();
+            }
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+    </script>
+</body>
+</html>
