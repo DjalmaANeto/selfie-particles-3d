@@ -106,6 +106,11 @@
         <button id="toggleMode">Alternar Estilo</button>
         <button id="toggleCam">Trocar Câmera</button>
         <button id="toggleRecord">Gravar Vídeo</button>
+        <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 13px;">
+            <span>Densidade:</span>
+            <input type="range" id="densitySlider" min="20" max="100" value="50" step="5" style="accent-color: #ff3366; cursor: pointer; width: 90px;">
+            <span id="densityVal" style="min-width: 45px; text-align: center;">50x38</span>
+        </div>
     </div>
 
     <script>
@@ -152,6 +157,24 @@
             });
 
             document.getElementById('toggleRecord').addEventListener('click', toggleRecording);
+
+            document.getElementById('densitySlider').addEventListener('input', (e) => {
+                let val = parseInt(e.target.value);
+                cols = val;
+                rows = Math.round(val * 0.76);
+                document.getElementById('densityVal').innerText = `${cols}x${rows}`;
+                
+                if (cam) {
+                    cam.size(cols, rows);
+                }
+
+                particles = [];
+                for (let y = 0; y < rows; y++) {
+                    for (let x = 0; x < cols; x++) {
+                        particles.push(new Particle(x, y));
+                    }
+                }
+            });
         }
 
         function initCamera() {
@@ -204,6 +227,7 @@
             } else {
                 videoReady = true;
                 document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
+                cam.size(cols, rows);
             }
             cam.elt.srcObject = stream;
         }
