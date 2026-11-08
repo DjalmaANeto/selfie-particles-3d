@@ -111,6 +111,11 @@
             <input type="range" id="densitySlider" min="20" max="100" value="50" step="5" style="accent-color: #ff3366; cursor: pointer; width: 90px;">
             <span id="densityVal" style="min-width: 45px; text-align: center;">50x38</span>
         </div>
+        <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 13px;">
+            <span>Tamanho:</span>
+            <input type="range" id="sizeSlider" min="0.2" max="5.0" value="1.0" step="0.1" style="accent-color: #33cc66; cursor: pointer; width: 90px;">
+            <span id="sizeVal" style="min-width: 40px; text-align: center;">1.0x</span>
+        </div>
     </div>
 
     <script>
@@ -121,6 +126,7 @@
         let videoReady = false;
         let mode = 0; // 0: Grid Partículas, 1: Partículas Livres Flutuantes
         let facingMode = 'environment'; // Iniciando com a câmera principal (traseira) por padrão
+        let particleSize = 1.0;
 
         let mediaRecorder;
         let recordedChunks = [];
@@ -387,7 +393,7 @@
                 noStroke();
                 fill(this.r, this.g, this.b, 220);
 
-                let sz = map(this.bright, 0, 255, 1, 5);
+                let sz = map(this.bright, 0, 255, 1, 5) * particleSize;
 
                 if (mode === 0) {
                     box(sz * 2);
