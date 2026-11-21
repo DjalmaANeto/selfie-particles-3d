@@ -116,6 +116,10 @@
             <input type="range" id="sizeSlider" min="0" max="100" value="50" step="1" style="accent-color: #33cc66; cursor: pointer; width: 90px;">
             <span id="sizeVal" style="min-width: 40px; text-align: center;">50%</span>
         </div>
+        <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 13px;">
+            <span>Pinça Quadro:</span>
+            <input type="checkbox" id="pinchModeToggle" style="accent-color: #33cc66; cursor: pointer; width: 16px; height: 16px;">
+        </div>
     </div>
 
     <script>
@@ -127,6 +131,8 @@
         let mode = 0; // 0: Grid Partículas, 1: Partículas Livres Flutuantes
         let facingMode = 'environment'; // Iniciando com a câmera principal (traseira) por padrão
         let particleSize = 1.0;
+        let sceneZoom = 1.0;
+        let prevPinchDist = null;
 
         let mediaRecorder;
         let recordedChunks = [];
@@ -342,13 +348,40 @@
             let rx = map(mouseY, 0, height, -0.5, 0.5);
             let ry = map(mouseX, 0, width, -0.5, 0.5);
             
-            if (touches.length > 0) {
+            if (touches.length === 1) {
                 rx = map(touches[0].y, 0, height, -0.5, 0.5);
                 ry = map(touches[0].x, 0, width, -0.5, 0.5);
+            } else if (touches.length === 2) {
+                let currentDist = dist(touches[0].x, touches[0].y, touches[1].x, touches[1].y);
+                if (prevPinchDist !== null) {
+                    let ratio = currentDist / prevPinchDist;
+                    let pinchToggle = document.getElementById('pinchModeToggle');
+                    if (pinchToggle && pinchToggle.checked) {
+                        sceneZoom = constrain(sceneZoom * ratio, 0.2, 5.0);
+                    } else {
+                        if (cam && cam.elt && cam.elt.srcObject) {
+                            let track = cam.elt.srcObject.getVideoTracks()[0];
+                            if (track) {
+                                let caps = track.getCapabilities ? track.getCapabilities() : {};
+                                let settings = track.getSettings ? track.getSettings() : {};
+                                if (caps.zoom) {
+                                    let curZoom = settings.zoom || caps.zoom.min || 1;
+                                    let newZoom = constrain(curZoom * ratio, caps.zoom.min, caps.zoom.max);
+                                    track.applyConstraints({ advanced: [{ zoom: newZoom }] }).catch(e => {});
+                                }
+                            }
+                        }
+                    }
+                }
+                prevPinchDist = currentDist;
+            } else {
+                prevPinchDist = null;
             }
 
             rotateX(rx);
             rotateY(ry);
+
+            scale(sceneZoom);
 
             let spacingX = width / cols;
             let spacingY = height / rows;
