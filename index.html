@@ -356,7 +356,9 @@
             translate(-width / 2 + spacingX / 2, -height / 2 + spacingY / 2, 0);
 
             let index = 0;
+            noStroke();
             for (let y = 0; y < rows; y++) {
+                let baseY = y * spacingY;
                 for (let x = 0; x < cols; x++) {
                     let camX = facingMode === 'user' ? (cols - 1 - x) : x;
                     let loc = (camX + y * cols) * 4;
@@ -368,7 +370,21 @@
 
                     let p = particles[index];
                     p.update(bright, r, g, b);
-                    p.display(x * spacingX, y * spacingY);
+                    
+                    let baseX = x * spacingX;
+                    let pz = p.z + (mode === 1 ? p.floatZ : 0);
+                    
+                    translate(baseX, baseY, pz);
+                    fill(p.r, p.g, p.b, 220);
+                    
+                    let sz = (1 + (p.bright / 255) * 4) * particleSize;
+
+                    if (mode === 0) {
+                        box(sz * 2);
+                    } else {
+                        sphere(sz * 1.5, 4, 4);
+                    }
+                    translate(-baseX, -baseY, -pz);
 
                     index++;
                 }
@@ -381,6 +397,11 @@
                 this.y = y;
                 this.offset = random(1000);
                 this.z = 0;
+                this.floatZ = 0;
+                this.bright = 0;
+                this.r = 255;
+                this.g = 255;
+                this.b = 255;
             }
 
             update(bright, r, g, b) {
@@ -389,28 +410,11 @@
                 this.g = g;
                 this.b = b;
 
-                let targetZ = map(bright, 0, 255, -120, 120);
-                this.z = lerp(this.z, targetZ, 0.2);
+                let targetZ = (bright * 240 / 255) - 120;
+                this.z += (targetZ - this.z) * 0.2;
 
                 let angle = millis() * 0.003 + this.offset;
                 this.floatZ = sin(angle) * 12;
-            }
-
-            display(baseX, baseY) {
-                push();
-                translate(baseX, baseY, this.z + (mode === 1 ? this.floatZ : 0));
-                
-                noStroke();
-                fill(this.r, this.g, this.b, 220);
-
-                let sz = map(this.bright, 0, 255, 1, 5) * particleSize;
-
-                if (mode === 0) {
-                    box(sz * 2);
-                } else {
-                    sphere(sz * 1.5, 4, 4);
-                }
-                pop();
             }
         }
 
