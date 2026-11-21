@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Selfie Partículas 3D - Câmera em Tempo Real com Gravação</title>
+    <title>Selfie Partículas 3D - Câmera e Vídeo em Tempo Real</title>
     <style>
         body, html {
             margin: 0;
@@ -32,7 +32,7 @@
             gap: 10px;
             justify-content: center;
             z-index: 10;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.75);
             padding: 12px 20px;
             border-radius: 30px;
             backdrop-filter: blur(5px);
@@ -66,7 +66,7 @@
             top: 15px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.75);
             padding: 8px 18px;
             border-radius: 15px;
             font-size: 13px;
@@ -95,8 +95,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
 </head>
 <body>
-    <div id="info">Iniciando câmera principal...</div>
+    <div id="info">Iniciando aplicação...</div>
     <div id="canvas-container"></div>
+    <input type="file" id="videoUpload" accept="video/*" style="display: none;">
     <div id="error-box">
         <h3>Aviso de Câmera / Permissões</h3>
         <p id="error-msg">Verifique se o dispositivo possui a câmera selecionada ou se as permissões foram concedidas.</p>
@@ -105,10 +106,11 @@
     <div id="ui">
         <button id="toggleMode">Alternar Estilo</button>
         <button id="toggleCam">Trocar Câmera</button>
+        <button id="importVideoBtn">Importar Vídeo</button>
         <button id="toggleRecord">Gravar Vídeo</button>
         <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 13px;">
             <span>Densidade:</span>
-            <input type="range" id="densitySlider" min="20" max="150" value="50" step="5" style="accent-color: #ff3366; cursor: pointer; width: 90px;">
+            <input type="range" id="densitySlider" min="20" max="100" value="50" step="5" style="accent-color: #ff3366; cursor: pointer; width: 90px;">
             <span id="densityVal" style="min-width: 45px; text-align: center;">50x38</span>
         </div>
         <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 13px;">
@@ -124,12 +126,14 @@
 
     <script>
         let cam;
+        let customVideo = null;
+        let isVideoSource = false;
         let particles = [];
         let cols = 50;
         let rows = 38;
         let videoReady = false;
         let mode = 0; // 0: Grid Partículas, 1: Partículas Livres Flutuantes
-        let facingMode = 'environment'; // Iniciando com a câmera principal (traseira) por padrão
+        let facingMode = 'environment';
         let particleSize = 1.0;
         let sceneZoom = 1.0;
         let prevPinchDist = null;
@@ -145,10 +149,9 @@
             p5Canvas.parent('canvas-container');
 
             if (window.location.protocol === 'file:') {
-                document.getElementById('error-msg').innerText = "Navegadores bloqueiam a câmera ao abrir arquivos locais (file://). Use via Servidor Local (http://localhost).";
+                document.getElementById('error-msg').innerText = "Navegadores bloqueiam a câmera ao abrir arquivos locais (file://). Use via Servidor Local (http://localhost) ou importe um vídeo.";
                 document.getElementById('error-box').style.display = 'block';
-                document.getElementById('info').innerText = 'Erro: Protocolo file:// detectado.';
-                return;
+                document.getElementById('info').innerText = 'Modo arquivo local detectado. Use "Importar Vídeo".';
             }
 
             initCamera();
@@ -164,8 +167,48 @@
             });
 
             document.getElementById('toggleCam').addEventListener('click', () => {
+                isVideoSource = false;
+                if (customVideo) {
+                    customVideo.pause();
+                    customVideo.remove();
+                    customVideo = null;
+                }
                 facingMode = (facingMode === 'user') ? 'environment' : 'user';
                 initCamera();
+            });
+
+            document.getElementById('importVideoBtn').addEventListener('click', () => {
+                document.getElementById('videoUpload').click();
+            });
+
+            document.getElementById('videoUpload').addEventListener('change', (e) => {
+                let file = e.target.files[0];
+                if (!file) return;
+
+                let url = URL.createObjectURL(file);
+                document.getElementById('info').innerText = 'Carregando vídeo...';
+
+                if (cam && cam.elt && cam.elt.srcObject) {
+                    let oldStream = cam.elt.srcObject;
+                    oldStream.getTracks().forEach(track => track.stop());
+                    cam.elt.srcObject = null;
+                }
+
+                if (customVideo) {
+                    customVideo.remove();
+                }
+
+                videoReady = false;
+                customVideo = createVideo(url, () => {
+                    customVideo.loop();
+                    customVideo.volume(0);
+                    customVideo.play();
+                    customVideo.size(cols, rows);
+                    customVideo.hide();
+                    isVideoSource = true;
+                    videoReady = true;
+                    document.getElementById('info').innerText = 'Vídeo importado ativo!';
+                });
             });
 
             document.getElementById('toggleRecord').addEventListener('click', toggleRecording);
@@ -176,7 +219,9 @@
                 rows = Math.round(val * 0.76);
                 document.getElementById('densityVal').innerText = `${cols}x${rows}`;
                 
-                if (cam) {
+                if (isVideoSource && customVideo) {
+                    customVideo.size(cols, rows);
+                } else if (cam) {
                     cam.size(cols, rows);
                 }
 
@@ -200,9 +245,8 @@
         }
 
         function initCamera() {
-            document.getElementById('info').innerText = 'Alternando câmera (' + (facingMode === 'user' ? 'Frontal' : 'Principal/Traseira') + ')...';
+            document.getElementById('info').innerText = 'Iniciando câmera...';
 
-            // Parar tracks anteriores para liberar o hardware
             if (cam && cam.elt && cam.elt.srcObject) {
                 let oldStream = cam.elt.srcObject;
                 oldStream.getTracks().forEach(track => track.stop());
@@ -224,9 +268,7 @@
                 })
                 .catch(err => {
                     console.warn("Falha com facingMode:", facingMode, err);
-                    // Fallback para câmera frontal ou qualquer disponível se a traseira falhar
                     if (facingMode === 'environment') {
-                        document.getElementById('info').innerText = 'Câmera principal indisponível, tentando frontal...';
                         facingMode = 'user';
                         constraints.video.facingMode = 'user';
                         navigator.mediaDevices.getUserMedia(constraints)
@@ -242,13 +284,13 @@
             if (!cam) {
                 cam = createCapture({ video: true, audio: false }, function() {
                     videoReady = true;
-                    document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
+                    document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar ou Importar Vídeo.';
                 });
                 cam.size(cols, rows);
                 cam.hide();
             } else {
                 videoReady = true;
-                document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar para iniciar.';
+                document.getElementById('info').innerText = 'Câmera ativa! Toque em Gravar ou Importar Vídeo.';
                 cam.size(cols, rows);
             }
             cam.elt.srcObject = stream;
@@ -256,23 +298,21 @@
 
         function handleCameraError(err) {
             console.error("Erro na câmera:", err);
-            let msg = "Erro ao acessar a câmera: " + err.message + "\n\nVerifique se o dispositivo possui a câmera selecionada ou se as permissões foram concedidas.";
-            document.getElementById('error-msg').innerText = msg;
             document.getElementById('error-box').style.display = 'block';
-            document.getElementById('info').innerText = 'Falha ao acessar a câmera.';
+            document.getElementById('info').innerText = 'Câmera indisponível. Use "Importar Vídeo".';
         }
 
         async function toggleRecording() {
             if (!isRecording) {
                 try {
                     recordedChunks = [];
-                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }).catch(e => null);
                     let canvasStream = p5Canvas.elt.captureStream(30);
 
-                    let combinedStream = new MediaStream([
-                        ...canvasStream.getVideoTracks(),
-                        ...micStream.getAudioTracks()
-                    ]);
+                    let videoTracks = canvasStream.getVideoTracks();
+                    let audioTracks = micStream ? micStream.getAudioTracks() : [];
+
+                    let combinedStream = new MediaStream([...videoTracks, ...audioTracks]);
 
                     let options = { mimeType: 'video/webm;codecs=vp9,opus' };
                     if (!MediaRecorder.isTypeSupported(options.mimeType)) {
@@ -308,7 +348,7 @@
                             micStream.getTracks().forEach(track => track.stop());
                         }
 
-                        document.getElementById('info').innerText = 'Vídeo salvo com sucesso!';
+                        document.getElementById('info').innerText = 'Vídeo salvo!';
                     };
 
                     mediaRecorder.start();
@@ -316,11 +356,11 @@
                     let btn = document.getElementById('toggleRecord');
                     btn.innerText = 'Parar Gravação';
                     btn.classList.add('recording');
-                    document.getElementById('info').innerText = 'Gravando vídeo e áudio...';
+                    document.getElementById('info').innerText = 'Gravando...';
 
                 } catch (err) {
-                    console.error("Erro ao iniciar gravação:", err);
-                    alert("Erro ao gravar: " + err.message + "\nVerifique permissões de microfone.");
+                    console.error("Erro ao gravar:", err);
+                    alert("Erro ao gravar: " + err.message);
                 }
             } else {
                 mediaRecorder.stop();
@@ -334,13 +374,14 @@
         function draw() {
             background(10, 10, 15);
 
-            if (!videoReady) {
+            let activeSource = isVideoSource ? customVideo : cam;
+            if (!videoReady || !activeSource) {
                 return;
             }
 
             try {
-                cam.loadPixels();
-                if (!cam.pixels || cam.pixels.length === 0) return;
+                activeSource.loadPixels();
+                if (!activeSource.pixels || activeSource.pixels.length === 0) return;
             } catch (e) {
                 return;
             }
@@ -358,19 +399,6 @@
                     let pinchToggle = document.getElementById('pinchModeToggle');
                     if (pinchToggle && pinchToggle.checked) {
                         sceneZoom = constrain(sceneZoom * ratio, 0.2, 5.0);
-                    } else {
-                        if (cam && cam.elt && cam.elt.srcObject) {
-                            let track = cam.elt.srcObject.getVideoTracks()[0];
-                            if (track) {
-                                let caps = track.getCapabilities ? track.getCapabilities() : {};
-                                let settings = track.getSettings ? track.getSettings() : {};
-                                if (caps.zoom) {
-                                    let curZoom = settings.zoom || caps.zoom.min || 1;
-                                    let newZoom = constrain(curZoom * ratio, caps.zoom.min, caps.zoom.max);
-                                    track.applyConstraints({ advanced: [{ zoom: newZoom }] }).catch(e => {});
-                                }
-                            }
-                        }
                     }
                 }
                 prevPinchDist = currentDist;
@@ -380,7 +408,6 @@
 
             rotateX(rx);
             rotateY(ry);
-
             scale(sceneZoom);
 
             let spacingX = width / cols;
@@ -393,12 +420,12 @@
             for (let y = 0; y < rows; y++) {
                 let baseY = y * spacingY;
                 for (let x = 0; x < cols; x++) {
-                    let camX = facingMode === 'user' ? (cols - 1 - x) : x;
+                    let camX = (!isVideoSource && facingMode === 'user') ? (cols - 1 - x) : x;
                     let loc = (camX + y * cols) * 4;
 
-                    let r = cam.pixels[loc] || 0;
-                    let g = cam.pixels[loc + 1] || 0;
-                    let b = cam.pixels[loc + 2] || 0;
+                    let r = activeSource.pixels[loc] || 0;
+                    let g = activeSource.pixels[loc + 1] || 0;
+                    let b = activeSource.pixels[loc + 2] || 0;
                     let bright = (r + g + b) / 3;
 
                     let p = particles[index];
